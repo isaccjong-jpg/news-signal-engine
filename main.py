@@ -43,6 +43,42 @@ UNIVERSE = _load_universe()
 CODE_SECTOR = {r["code"]: sec for sec, rows in UNIVERSE["sectors"].items() for r in rows}
 ABSOLUTE_SECTORS = {sec for sec in UNIVERSE["sectors"] if sec.startswith("ETF_")}
 SEEN_KEEP_HOURS = 12
+SEEN_CHUNK = 40000  # 구글시트 셀 한도 50,000자 → 청크 분할 저장(12시간×150건 ≈ 1,800해시)
+
+
+def _load_seen(sheet):
+    """seen_news: 'hash:epoch분' 쉼표 문자열을 seen_news#0..N 청크로 저장. 구형(JSON dict) 키도 읽음."""
+    seen = {}
+    old = sheet.get_state("seen_news", {})
+    if isinstance(old, dict):
+        seen.update({h: float(v) for h, v in old.items()})
+    for r in sheet.records("_state"):
+        if str(r["key"]).startswith("seen_news#"):
+            try:
+                body = json.loads(r["value"]) or ""
+            except Exception:
+                body = ""
+            for tok in str(body).split(","):
+                h, _, m = tok.partition(":")
+                if h and m.isdigit():
+                    seen[h] = int(m) * 60.0
+    return seen
+
+
+def _save_seen(sheet, seen):
+    body = ",".join(f"{h}:{int(v // 60)}" for h, v in seen.items())
+    # 청크 경계에서 토큰이 잘리지 않게 쉼표 기준으로 분할
+    chunks, cur = [], []
+    size = 0
+    for tok in body.split(",") if body else []:
+        if size + len(tok) + 1 > SEEN_CHUNK and cur:
+            chunks.append(",".join(cur)); cur, size = [], 0
+        cur.append(tok); size += len(tok) + 1
+    chunks.append(",".join(cur))
+    prev = sum(1 for r in sheet.records("_state") if str(r["key"]).startswith("seen_news#"))
+    for i in range(max(len(chunks), prev)):
+        sheet.set_state(f"seen_news#{i}", chunks[i] if i < len(chunks) else "")
+    sheet.set_state("seen_news", {})  # 구형 키 비움(셀 한도 초과 방지)
 RECENT_EVENT_HOURS = 72
 
 
@@ -79,7 +115,7 @@ def run_collect(cfg, sheet, mock_llm=None):
     t = now_kst()
     ts = t.strftime("%Y-%m-%d %H:%M")
 
-    seen = sheet.get_state("seen_news", {}) if sheet else {}
+    seen = _load_seen(sheet) if sheet else {}
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=SEEN_KEEP_HOURS)).timestamp()
     seen = {h: v for h, v in seen.items() if v >= cutoff}
 
@@ -157,7 +193,7 @@ def run_collect(cfg, sheet, mock_llm=None):
         now_ts = datetime.now(timezone.utc).timestamp()
         for h in raw_headlines:
             seen[h["hash"]] = now_ts
-        sheet.set_state("seen_news", seen)
+        _save_seen(sheet, seen)
         sheet.append("실행로그", [[ts, "collect", f"{n_raw}{screen_note}", len(sig_rows), len(meas_rows), "",
                                  "; ".join(dropped_all)[:500], ""]])
     else:
