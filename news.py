@@ -26,6 +26,13 @@ KO_QUERIES = [
     "2차전지 OR 배터리 수주 OR 전기차 수요", "방산 수출 OR K방산", "원전 수주 OR SMR",
     "자동차 관세 OR 완성차 판매", "해운 운임 OR 컨테이너 운임", "철강 반덤핑 OR 철강 관세",
     "바이오 FDA 승인 OR 임상 결과", "특허 소송 OR ITC 판정", "중국 소비 OR 면세 OR 화장품 수출",
+    # 제약·바이오 정책
+    "기술수출 OR 라이선스 아웃 OR 비만치료제", "의약품 관세 OR 약가 인하 OR 생물보안법",
+    # 원자재
+    "구리 가격 OR 니켈 OR LME", "리튬 가격 OR 희토류 OR 핵심광물", "금값 OR 은값", "곡물 가격 OR 밀 OR 옥수수", "천연가스 OR LNG 가격",
+    # 국내 정책·실적·수급
+    "한국은행 기준금리", "밸류업 OR 상법 개정 OR 배당소득 분리과세 OR 공매도", "잠정실적 OR 어닝 서프라이즈 OR 어닝 쇼크",
+    "외국인 순매도 OR 외국인 순매수 코스피", "AI 데이터센터 전력 OR 전력망 투자",
     # 해외 증시(맥락용)
     "뉴욕증시 마감 OR 필라델피아 반도체지수",
 ]
@@ -36,7 +43,14 @@ EN_QUERIES = [
     "TSMC OR Nvidia OR Micron earnings", "HBM OR DRAM prices", "shipbuilding orders LNG carrier",
     "EV battery demand OR lithium prices", "FDA approval", "patent lawsuit ITC",
     "stock market close Nasdaq semiconductor index",
+    "copper prices OR LME nickel", "gold price OR silver price", "rare earths OR critical minerals",
+    "pharmaceutical tariffs OR drug pricing OR BIOSECURE", "biotech licensing deal OR obesity drug",
+    "hyperscaler capex OR data center power", "Bank of Japan OR yen", "China economic data OR PBOC",
 ]
+# 네이버: 국내 매체 커버리지가 강한 업종·정책 축 위주 (일 25,000회 한도 대비 하루 ~400회)
+NAVER_QUERIES = ["국제정세", "관세", "제재", "유가", "연준 금리", "북한", "반도체", "조선 수주", "방산 수출",
+                 "2차전지", "원전", "석유화학", "제약 기술수출", "임상", "원자재 가격", "한국은행 금리", "밸류업",
+                 "잠정실적"]
 EN_TOPICS = [
     "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en",
     "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en",
@@ -46,7 +60,7 @@ EN_TOPICS = [
 def query_fingerprint():
     """수집 축(쿼리 세트) 해시 — 바뀌면 입력 분포가 바뀌므로 실험 버전에 포함."""
     import hashlib
-    return hashlib.sha1(json.dumps([KO_QUERIES, EN_QUERIES, EN_TOPICS], ensure_ascii=False).encode()).hexdigest()[:6]
+    return hashlib.sha1(json.dumps([KO_QUERIES, EN_QUERIES, EN_TOPICS, NAVER_QUERIES], ensure_ascii=False).encode()).hexdigest()[:6]
 
 
 def _gn_search(q, lang, hours):
@@ -82,7 +96,7 @@ def _naver(cfg, hours):
     if not (cid and sec):
         return []
     out = []
-    for q in ["국제정세", "전쟁", "관세", "제재", "유가", "연준 금리", "북한"]:
+    for q in NAVER_QUERIES:
         try:
             r = requests.get(
                 "https://openapi.naver.com/v1/search/news.json",

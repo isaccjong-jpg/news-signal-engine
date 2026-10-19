@@ -114,7 +114,9 @@ def run_collect(cfg, sheet, mock_llm=None):
     sig_rows, meas_rows, alerts, dropped_all, primary_events = [], [], [], [], []
     for pi, prov in enumerate(providers):
         pver = "mock" if mock_llm else prompt_version(cfg, UNIVERSE, prov)
-        recent = recent_by_ver.get(pver, [])
+        # 같은 모델 계열(태그)의 최근 사건 전체 — 버전이 바뀌어도(쿼리·유니버스 수정) 진행 중 사건을 '신규'로 재기록하지 않게.
+        tag = pver.split("-")[0]
+        recent = [e for v, evs in recent_by_ver.items() if v == pver or v.startswith(tag + "-") for e in evs]
         try:
             if mock_llm:
                 raw = json.loads(Path(mock_llm).read_text(encoding="utf-8"))

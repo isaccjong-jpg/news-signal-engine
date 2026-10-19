@@ -6,9 +6,9 @@
 ## 구조
 | 파일 | 역할 |
 |---|---|
-| `news.py` | Google News RSS(한/영 18개 축) + 네이버 뉴스 API(선택). 2시간 창, 제목 해시 중복제거, 축별 라운드로빈 150건 |
+| `news.py` | Google News RSS(한 34·영 23개 축: 거시·지정학·업종·원자재·제약·국내정책·실적) + 네이버 뉴스 API 18개 축. 2시간 창, 제목 해시 중복제거, 축별 라운드로빈 150건 |
 | `classifier.py` | 1차 선별(저가 모델) → 본 판단(Anthropic/Gemini, 그림자 실행 가능) + 검증: 유니버스 밖 코드·형식오류·기존 사건 후속보도 제거 |
-| `private/universe.json` | 판단 허용 종목 70개(비공개, push 제외). 공개본은 `universe.sample.json` |
+| `private/universe.json` | 판단 허용 종목 82개(제약·비철전선 포함)(비공개, push 제외). 공개본은 `universe.sample.json` |
 | `private/prompt.txt` | 판단 원칙(비공개, push 제외) |
 | `prices.py` | 네이버 일봉(종목·ETF·KOSPI 지수, 키 불필요) |
 | `measure.py` | 진입가·수익률·초과수익 계산, 사건 단위 요약 통계 |
