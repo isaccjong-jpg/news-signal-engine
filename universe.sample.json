@@ -1,0 +1,23 @@
+{
+ "_note": "공개용 샘플. 실제 유니버스는 Secret PRIVATE_UNIVERSE 또는 private/universe.json",
+ "sectors": {
+  "ETF_자산": [
+   {
+    "code": "069500",
+    "name": "KODEX 200"
+   },
+   {
+    "code": "229200",
+    "name": "KODEX 코스닥150"
+   },
+   {
+    "code": "114800",
+    "name": "KODEX 인버스"
+   },
+   {
+    "code": "132030",
+    "name": "KODEX 골드선물(H)"
+   }
+  ]
+ }
+}

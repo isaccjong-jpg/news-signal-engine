@@ -1,0 +1,6 @@
+{"events":[
+ {"event_key":"MIDEAST_TENSION_OIL","is_new":true,"category":"원자재_에너지","summary":"테스트: 중동 긴장으로 유가 상승","news_ids":["n0","n1"],"materiality":4,"horizon_days":5,
+  "impacts":[{"code":"010950","direction":"+","confidence":4,"rationale":"정제마진 개선"},{"code":"003490","direction":"-","confidence":3,"rationale":"유류비 부담"},{"code":"999999","direction":"+","confidence":5,"rationale":"환각코드"}]},
+ {"event_key":"MINOR_THING","is_new":true,"category":"기타","summary":"사소","news_ids":["n2"],"materiality":2,"horizon_days":1,"impacts":[{"code":"005930","direction":"+","confidence":2,"rationale":"x"}]},
+ {"event_key":"OLD_FOLLOWUP","is_new":false,"category":"북한","summary":"후속","news_ids":[],"materiality":4,"horizon_days":3,"impacts":[{"code":"012450","direction":"+","confidence":3,"rationale":"x"}]}
+]}

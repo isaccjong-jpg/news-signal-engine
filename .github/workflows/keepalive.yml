@@ -1,0 +1,17 @@
+name: keepalive
+
+# 공개 저장소는 60일간 활동 없으면 스케줄이 자동 비활성화됨 → 주 1회 재활성화 (작업 1분)
+on:
+  schedule:
+    - cron: "17 0 * * 1"
+  workflow_dispatch:
+
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/signal.yml/enable"

@@ -1,0 +1,33 @@
+name: news-signal-engine
+
+on:
+  schedule:
+    - cron: "7 * * * *"        # 매시 7분(UTC) — 정각 혼잡 회피. KST 18시 실행분에서 측정·요약
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "auto | collect | measure"
+        default: "auto"
+
+concurrency:
+  group: news-signal-engine
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: run
+        env:
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+          PRIVATE_PROMPT: ${{ secrets.PRIVATE_PROMPT }}
+          PRIVATE_UNIVERSE: ${{ secrets.PRIVATE_UNIVERSE }}
+          TZ: Asia/Seoul
+        run: python main.py ${{ github.event.inputs.mode || 'auto' }}

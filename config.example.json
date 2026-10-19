@@ -1,0 +1,17 @@
+{
+  "SHEET_ID": "판정용_구글시트_ID",
+  "ARCHIVE_SHEET_ID": "원문보관용_구글시트_ID",
+  "GCP_SA_JSON": {"type": "service_account", "project_id": "...", "private_key_id": "...", "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n", "client_email": "...@....iam.gserviceaccount.com", "client_id": "...", "token_uri": "https://oauth2.googleapis.com/token"},
+  "LLM_PROVIDERS": "anthropic,gemini",
+  "LLM_TEMPERATURE": 0,
+  "SCREENER_PROVIDER": "gemini",
+  "ANTHROPIC_SCREENER_MODEL": "claude-haiku-5-5",
+  "ANTHROPIC_API_KEY": "sk-ant-...",
+  "ANTHROPIC_MODEL": "claude-sonnet-5-5",
+  "GEMINI_API_KEY": "",
+  "GEMINI_MODEL": "gemini-3.5-flash",
+  "NAVER_CLIENT_ID": "",
+  "NAVER_CLIENT_SECRET": "",
+  "TELEGRAM_BOT_TOKEN": "",
+  "TELEGRAM_CHAT_ID": ""
+}
