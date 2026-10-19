@@ -1,8 +1,8 @@
 name: news-signal-engine
 
 on:
-  schedule:
-    - cron: "7 * * * *"        # 매시 7분(UTC) — 정각 혼잡 회피. KST 18시 실행분에서 측정·요약
+  # 정시 실행은 cron-job.org가 workflow_dispatch로 호출(매시 7분 KST, mode=auto → 18시 실행분에서 측정·요약).
+  # GitHub 자체 schedule은 수십 분~수 시간 지연돼 제거(FOOD CALL ENGINE과 동일 방식).
   workflow_dispatch:
     inputs:
       mode:

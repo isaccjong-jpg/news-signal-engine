@@ -195,7 +195,7 @@ def prompt_version(cfg, universe, provider):
     하나라도 바뀌면 새 실험(섞어 집계 금지). 모델ID는 날짜 고정 스냅샷 ID 사용 권장 — 같은 이름이라도 업데이트되면 다른 모델."""
     import hashlib
     body = (_system_prompt(cfg) + json.dumps(universe, sort_keys=True, ensure_ascii=False)
-            + f"|{model_id(cfg, provider)}|{cfg['LLM_TEMPERATURE']}|screen={screener_id(cfg)}")
+            + f"|{model_id(cfg, provider)}|{cfg['LLM_TEMPERATURE']}|screen={screener_id(cfg)}|q={__import__('news').query_fingerprint()}")
     return f"{provider_tag(cfg, provider)}-{hashlib.sha1(body.encode()).hexdigest()[:8]}"
 
 

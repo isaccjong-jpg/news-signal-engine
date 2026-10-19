@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""국제정세 뉴스 수집 — Google News RSS(한/영) + 네이버 뉴스 API(선택)."""
+"""국내외 정세·산업·시장 뉴스 수집 — Google News RSS(한/영) + 네이버 뉴스 API(선택)."""
 import hashlib
+import json
 import html
 import re
 import xml.etree.ElementTree as ET
@@ -16,19 +17,36 @@ UA = {"User-Agent": "Mozilla/5.0 (news-signal-engine)"}
 
 # 한국 시장에 전이되는 국제정세 축 위주. when:Nh 는 Google News 서버측 시간 필터.
 KO_QUERIES = [
+    # 거시·지정학
     "국제정세", "전쟁 OR 공습 OR 휴전", "관세 OR 무역협상 OR 수출규제", "제재 러시아 OR 이란 OR 중국",
     "연준 금리 OR FOMC", "유가 OR OPEC OR 호르무즈", "북한 미사일 OR 북한 도발",
-    "중국 경기부양 OR 중국 규제", "반도체 수출통제 OR 엔비디아", "환율 급등 OR 달러 강세",
+    "중국 경기부양 OR 중국 규제", "환율 급등 OR 달러 강세",
+    # 업종·산업 (한국 유니버스 직결)
+    "반도체 HBM OR 메모리 가격 OR 수출통제", "조선 수주 OR LNG선", "석유화학 구조조정 OR 화학 스프레드",
+    "2차전지 OR 배터리 수주 OR 전기차 수요", "방산 수출 OR K방산", "원전 수주 OR SMR",
+    "자동차 관세 OR 완성차 판매", "해운 운임 OR 컨테이너 운임", "철강 반덤핑 OR 철강 관세",
+    "바이오 FDA 승인 OR 임상 결과", "특허 소송 OR ITC 판정", "중국 소비 OR 면세 OR 화장품 수출",
+    # 해외 증시(맥락용)
+    "뉴욕증시 마감 OR 필라델피아 반도체지수",
 ]
 EN_QUERIES = [
     "geopolitics", "war OR airstrike OR ceasefire", "tariff OR trade deal OR export controls",
     "sanctions Russia OR Iran OR China", "Federal Reserve rate", "oil prices OPEC",
     "Taiwan Strait OR South China Sea", "chip export restrictions",
+    "TSMC OR Nvidia OR Micron earnings", "HBM OR DRAM prices", "shipbuilding orders LNG carrier",
+    "EV battery demand OR lithium prices", "FDA approval", "patent lawsuit ITC",
+    "stock market close Nasdaq semiconductor index",
 ]
 EN_TOPICS = [
     "https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en",
     "https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en",
 ]
+
+
+def query_fingerprint():
+    """수집 축(쿼리 세트) 해시 — 바뀌면 입력 분포가 바뀌므로 실험 버전에 포함."""
+    import hashlib
+    return hashlib.sha1(json.dumps([KO_QUERIES, EN_QUERIES, EN_TOPICS], ensure_ascii=False).encode()).hexdigest()[:6]
 
 
 def _gn_search(q, lang, hours):
