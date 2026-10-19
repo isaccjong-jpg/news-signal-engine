@@ -49,15 +49,26 @@ def _system_prompt(cfg):
     return p.strip() + "\n" + OUTPUT_SCHEMA
 
 
+def _raise_with_api_message(r, vendor):
+    """HTTP 오류 시 API가 준 오류 메시지(키 미포함)를 예외에 실어 시트 실행로그에서 원인을 바로 볼 수 있게."""
+    if r.status_code >= 400:
+        try:
+            msg = r.json().get("error", {}).get("message", "")
+        except Exception:
+            msg = ""
+        raise RuntimeError(f"{vendor} HTTP {r.status_code}: {str(msg)[:200]}")
+
+
 def _call_anthropic(cfg, system, user):
+    # Claude 5.5 계열은 temperature 파라미터를 거부함("deprecated for this model") → 보내지 않는다(모델 기본값).
     r = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={"x-api-key": cfg["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01",
                  "content-type": "application/json"},
-        json={"model": cfg["ANTHROPIC_MODEL"], "max_tokens": 4000, "temperature": cfg["LLM_TEMPERATURE"],
+        json={"model": cfg["ANTHROPIC_MODEL"], "max_tokens": 4000,
               "system": system, "messages": [{"role": "user", "content": user}]},
         timeout=120)
-    r.raise_for_status()
+    _raise_with_api_message(r, "anthropic")
     return "".join(b.get("text", "") for b in r.json()["content"]), cfg["ANTHROPIC_MODEL"]
 
 
@@ -69,7 +80,7 @@ def _call_gemini(cfg, system, user):
               "contents": [{"role": "user", "parts": [{"text": user}]}],
               "generationConfig": {"temperature": cfg["LLM_TEMPERATURE"], "responseMimeType": "application/json"}},
         timeout=120)
-    r.raise_for_status()
+    _raise_with_api_message(r, "gemini")
     parts = r.json()["candidates"][0]["content"]["parts"]
     return "".join(p.get("text", "") for p in parts), cfg["GEMINI_MODEL"]
 
