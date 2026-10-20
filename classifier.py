@@ -14,6 +14,8 @@ CATEGORIES = [
 # 판단 원칙(=전략의 핵심)은 저장소에 두지 않는다 → Secret PRIVATE_PROMPT 또는 private/prompt.txt(.gitignore)
 DEFAULT_PRINCIPLES = "너는 한국 주식시장 이벤트 분석가다. 뉴스 헤드라인에서 한국 상장 종목에 영향을 줄 사건을 구조화한다. 영향 종목은 UNIVERSE 목록의 code만 사용한다."
 
+USAGE = []  # (model, input_tokens, output_tokens) — 실행당 누적, main이 읽고 비움
+
 OUTPUT_SCHEMA = """반드시 JSON만 출력:
 {"events":[{"event_key":"영문대문자_스네이크_핵심어","is_new":true,"category":"<CATEGORIES 중 하나>","summary":"한국어 1문장","news_ids":["n0"],"materiality":3,"horizon_days":5,"impacts":[{"code":"000000","direction":"+","confidence":3,"rationale":"한국어 1문장 인과"}]}]}"""
 
@@ -70,7 +72,10 @@ def _call_anthropic(cfg, system, user):
               "system": system, "messages": [{"role": "user", "content": user}]},
         timeout=120)
     _raise_with_api_message(r, "anthropic")
-    return "".join(b.get("text", "") for b in r.json()["content"]), cfg["ANTHROPIC_MODEL"]
+    j = r.json()
+    u = j.get("usage", {})
+    USAGE.append((cfg["ANTHROPIC_MODEL"], int(u.get("input_tokens", 0)), int(u.get("output_tokens", 0))))
+    return "".join(b.get("text", "") for b in j["content"]), cfg["ANTHROPIC_MODEL"]
 
 
 def _call_gemini(cfg, system, user):
@@ -82,6 +87,8 @@ def _call_gemini(cfg, system, user):
               "generationConfig": {"temperature": cfg["LLM_TEMPERATURE"], "responseMimeType": "application/json"}},
         timeout=120)
     _raise_with_api_message(r, "gemini")
+    um = r.json().get("usageMetadata", {})
+    USAGE.append((cfg["GEMINI_MODEL"], int(um.get("promptTokenCount", 0)), int(um.get("candidatesTokenCount", 0))))
     parts = r.json()["candidates"][0]["content"]["parts"]
     return "".join(p.get("text", "") for p in parts), cfg["GEMINI_MODEL"]
 

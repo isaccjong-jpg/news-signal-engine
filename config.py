@@ -28,6 +28,9 @@ _DEFAULTS = {
     "MIN_MATERIALITY": 3,           # 1~5, 이 미만 사건은 기록 안 함
     "MEASURE_HOUR_KST": 18,         # 측정은 하루 1회 (장 마감 후)
     "ALERT_MIN_CONFIDENCE": 4,      # 텔레그램 알림 기준
+    "API_MONTHLY_BUDGET_USD": 100,  # 월 API 예산(Max 플랜 포함 크레딧). 월말 추정이 80% 넘으면 일일요약에 경고
+    # $/백만 토큰 [입력, 출력] — 2026-10 공식 가격표(platform.claude.com/docs/en/about-claude/pricing). 바뀌면 CONFIG_JSON에서 덮어쓰기
+    "PRICES_PER_MTOK": {"claude-opus-5-5": [4, 20], "claude-sonnet-5-5": [2, 10], "claude-haiku-5-5": [0.1, 0.5]},
 }
 
 
@@ -43,6 +46,9 @@ def load_config():
     for k in ("NEWS_LOOKBACK_HOURS", "MAX_HEADLINES", "MIN_MATERIALITY", "MEASURE_HOUR_KST", "ALERT_MIN_CONFIDENCE"):
         cfg[k] = int(cfg[k])
     cfg["LLM_TEMPERATURE"] = float(cfg["LLM_TEMPERATURE"])
+    cfg["API_MONTHLY_BUDGET_USD"] = float(cfg["API_MONTHLY_BUDGET_USD"])
+    if isinstance(cfg["PRICES_PER_MTOK"], str):
+        cfg["PRICES_PER_MTOK"] = json.loads(cfg["PRICES_PER_MTOK"])
     cfg["PROVIDERS"] = [p.strip().lower() for p in str(cfg["LLM_PROVIDERS"]).split(",") if p.strip()]
     if isinstance(cfg["GCP_SA_JSON"], str) and cfg["GCP_SA_JSON"].strip():
         cfg["GCP_SA_JSON"] = json.loads(cfg["GCP_SA_JSON"])

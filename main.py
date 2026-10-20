@@ -17,6 +17,7 @@ from pathlib import Path
 
 import requests
 
+import classifier
 from classifier import classify, prompt_version, provider_tag, screen, validate
 from config import KST, load_config
 from measure import HORIZONS, iso_week, measure_one, measure_simple, parse_kst, summarize
@@ -112,6 +113,46 @@ def is_session(t):
 
 
 # ───────────────────────── 수집·판단 ─────────────────────────
+def _account_usage(cfg, sheet, t):
+    """이번 실행의 LLM 토큰 → 비용 추정 → _state['usage_YYYY-MM'] 누적. 반환: 실행로그용 문자열."""
+    calls = classifier.USAGE[:]
+    classifier.USAGE.clear()
+    if not calls:
+        return ""
+    prices = cfg.get("PRICES_PER_MTOK", {})
+    tin = sum(c[1] for c in calls)
+    tout = sum(c[2] for c in calls)
+    usd = 0.0
+    for model, i, o in calls:
+        p = prices.get(model) or next((v for k, v in prices.items() if model.startswith(k)), [0, 0])
+        usd += i * p[0] / 1e6 + o * p[1] / 1e6
+    key = f"usage_{t.strftime('%Y-%m')}"
+    empty = {"in": 0, "out": 0, "usd": 0.0, "calls": 0, "since": t.strftime("%Y-%m-%d %H:%M")}
+    acc = (sheet.get_state(key, None) if sheet else None) or empty
+    acc = {"in": acc["in"] + tin, "out": acc["out"] + tout, "usd": round(acc["usd"] + usd, 4),
+           "calls": acc["calls"] + len(calls), "since": acc.get("since") or empty["since"]}
+    if sheet:
+        sheet.set_state(key, acc)
+    return f"{tin}/{tout} ${usd:.3f} | 이달 ${acc['usd']:.2f}"
+
+
+def _usage_line(cfg, sheet, t):
+    """일일요약용: 이달 누적·월말 추정·예산 대비. 80% 초과 시 경고 문구."""
+    acc = sheet.get_state(f"usage_{t.strftime('%Y-%m')}", None)
+    if not acc:
+        return ""
+    import calendar
+    dim = calendar.monthrange(t.year, t.month)[1]
+    since = datetime.strptime(acc.get("since") or t.strftime("%Y-%m-%d %H:%M"), "%Y-%m-%d %H:%M").replace(tzinfo=KST)
+    tracked_days = max((t - since).total_seconds() / 86400, 0.5)  # 집계 시작 이후 일수 기준으로 월 환산
+    proj = acc["usd"] / tracked_days * dim
+    budget = cfg["API_MONTHLY_BUDGET_USD"]
+    line = f"API 이달 ${acc['usd']:.2f} ({acc['calls']}회, 입력 {acc['in']//1000}k/출력 {acc['out']//1000}k 토큰) → 월말 추정 ${proj:.0f} / 예산 ${budget:.0f}"
+    if proj > budget * 0.8:
+        line = "⚠ 예산 80% 초과 전망 — " + line
+    return line
+
+
 class _Snap:
     """신호 시점 가격 스냅샷(실행당 1회 조회·캐시). 실패해도 기록은 계속(빈 칸)."""
     def __init__(self):
@@ -135,12 +176,15 @@ def _basket_rows(sid, ts, ev, pver, snap):
         sec = CODE_SECTOR.get(im["code"])
         if sec and sec not in ABSOLUTE_SECTORS and sec in BASKETS:
             dirs.setdefault(sec, []).append(im["direction"])
-    rows = []
+    rows, used = [], set()
     k_px, s_px = snap.get("KOSPI")[0], snap.get("SPX")[0]
     for si, (sec, ds) in enumerate(dirs.items()):
         net = sum(1 if d == "+" else -1 for d in ds)
-        d = "+" if net > 0 else "-" if net < 0 else ds[0]
+        d = "+" if net > 0 else "-" if net < 0 else "±"  # ±: 같은 섹터에 +/−가 섞임 → 기록만 하고 집계 제외
         for j, it in enumerate(BASKETS[sec]):
+            if it["code"] in used:  # 같은 ETF가 두 섹터에 쓰이는 경우(헬스케어: 바이오·제약) 한 신호에 1회만
+                continue
+            used.add(it["code"])
             p, pd = snap.get(it["code"])
             rows.append([f"{sid}-B{si}{j}", sid, ts, sec, it["role"], d, it["code"], it["name"], pver,
                          p, pd, k_px, s_px] + [""] * 17 + ["대기", ts])
@@ -234,8 +278,9 @@ def run_collect(cfg, sheet, mock_llm=None):
         for h in raw_headlines:
             seen[h["hash"]] = now_ts
         _save_seen(sheet, seen)
+        usage = _account_usage(cfg, sheet, t)
         sheet.append("실행로그", [[ts, "collect", f"{n_raw}{screen_note}", len(sig_rows), len(meas_rows), "",
-                                 "; ".join(dropped_all)[:500], ""]])
+                                 "; ".join(dropped_all)[:500], "", usage]])
     else:
         for h in raw_headlines[:15]:
             print(f"  {h['id']} {h['ts_kst']} [{h['source']}] {h['title']}")
@@ -372,7 +417,7 @@ def run_measure(cfg, sheet):
         bk = [{"signal_id": r["신호ID"], "category": "-", "confidence": "-", "week": iso_week(r.get("기준일", "")),
                **{f"s{h}": ((1 if r["방향"] == "+" else -1) * _f(r.get(f"초과K{h}d"))
                             if _f(r.get(f"초과K{h}d")) is not None else None) for h in HORIZONS}}
-              for r in b_rows if str(r.get("버전", "")) == ver]
+              for r in b_rows if str(r.get("버전", "")) == ver and r["방향"] in ("+", "-")]
         if bk:
             x = summarize(bk)[0]; x["group"] = "참고:섹터바구니 KOSPI단순초과"; ref.append(x)
         lines[2 if bl else 1:1] = ref  # 전체·기준선 바로 아래
@@ -392,6 +437,9 @@ def run_measure(cfg, sheet):
         for a in summ:
             if a[1] in ("전체", "기준선:반응방향추종(비교용)"):
                 msg.append(f"{a[0]} {a[1][:3]}: {a[7]}% / {a[8]}% / t={a[9]} (N={a[6]}, {a[14]}주)")
+        ul = _usage_line(cfg, sheet, t)
+        if ul:
+            msg.append(ul)
         telegram(cfg, "\n".join(msg))
 
 
