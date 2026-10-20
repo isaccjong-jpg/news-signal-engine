@@ -434,9 +434,14 @@ def run_measure(cfg, sheet):
     print(f"[measure] 갱신 {n_upd}행, 오류 {len(errs)}")
     if summ:
         msg = [f"[신호검증 일일요약] {ts}", "1차지표=5d 사건단위 평균 / 적중률 / 주클러스터 t (N, 주수)"]
+        shown = 0
         for a in summ:
-            if a[1] in ("전체", "기준선:반응방향추종(비교용)"):
+            if a[1] in ("전체", "기준선:반응방향추종(비교용)") and a[6]:  # N(5d)>0 인 버전만
                 msg.append(f"{a[0]} {a[1][:3]}: {a[7]}% / {a[8]}% / t={a[9]} (N={a[6]}, {a[14]}주)")
+                shown += 1
+        n_wait = sum(1 for r in done_rows if r.get("상태") in ("대기", "진행"))
+        if not shown:
+            msg.append(f"5d 결과 아직 없음 — 측정 대기 {n_wait}행 (신호 후 5영업일 지나야 집계)")
         ul = _usage_line(cfg, sheet, t)
         if ul:
             msg.append(ul)
