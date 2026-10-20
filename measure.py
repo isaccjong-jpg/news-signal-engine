@@ -17,7 +17,7 @@ import math
 from datetime import datetime, time as dtime
 
 from config import KST
-from prices import daily_closes
+from prices import daily_closes, spx_closes
 
 HORIZONS = (1, 5, 20)
 CUTOFF = dtime(15, 20)
@@ -60,18 +60,67 @@ def _final_days(closes, now_kst):
     return days
 
 
+def _base_dates(signal_kst, bench, days):
+    """(기준일, 판단시점 확정종가일). 기준일 = 판단 후 실제 체결 가능한 첫 종가일."""
+    d = signal_kst.strftime("%Y%m%d")
+    if d in bench and signal_kst.time() <= CUTOFF:
+        return d, max((x for x in days if x < d), default=None)
+    nxt = [x for x in sorted(bench) if x > d]
+    return (nxt[0] if nxt else None), max((x for x in days if x <= d), default=None)
+
+
+def _spx_before(spx, yyyymmdd):
+    """KRX 일자 D 종가 시점에 이미 확정된 S&P500 종가 = 미국 현지일 < D 인 마지막 종가(미국장은 D 새벽에 마감)."""
+    d = max((x for x in spx if x < yyyymmdd), default=None)
+    return spx[d] if d else None
+
+
+def measure_simple(signal_kst, code, now_kst):
+    """단순 지수 대비 초과수익(사용자 지시): 초과 = 종목% − 지수%. 지수 = KOSPI, S&P500 두 가지.
+    기준일·N영업일 규칙은 measure_one과 동일(KRX 영업일). 베타 조정 1차 지표와 별개의 참고 지표."""
+    bench = daily_closes("KOSPI")
+    days = _final_days(bench, now_kst)
+    base_date, _ = _base_dates(signal_kst, bench, days)
+    res = {"base_date": base_date, "base": None, "status": "대기"}
+    for h in HORIZONS:
+        for k in ("r", "k", "sp", "xk", "xs"):
+            res[f"{k}{h}"] = None
+    if base_date is None or base_date not in days:
+        return res
+    px = daily_closes(code)
+    if base_date not in px:
+        res["status"] = "결측"
+        return res
+    try:
+        spx = spx_closes()
+    except Exception:
+        spx = {}
+    base, kb = px[base_date], bench[base_date]
+    sb = _spx_before(spx, base_date)
+    res["base"] = base
+    i0 = days.index(base_date)
+    done = 0
+    for h in HORIZONS:
+        if i0 + h >= len(days) or days[i0 + h] not in px:
+            continue
+        dh = days[i0 + h]
+        r = (px[dh] / base - 1) * 100
+        k = (bench[dh] / kb - 1) * 100
+        res[f"r{h}"], res[f"k{h}"], res[f"xk{h}"] = round(r, 3), round(k, 3), round(r - k, 3)
+        se = _spx_before(spx, dh)
+        if sb and se:
+            sp = (se / sb - 1) * 100
+            res[f"sp{h}"], res[f"xs{h}"] = round(sp, 3), round(r - sp, 3)
+        done += 1
+    res["status"] = "완료" if done == len(HORIZONS) else "진행"
+    return res
+
+
 def measure_one(signal_kst, code, direction, now_kst, absolute=False):
     """반환 dict (값 없는 항목은 None). status: 대기/진행/완료/결측. absolute=True → 벤치 0(자산ETF)."""
     bench = daily_closes("KOSPI")  # 영업일 캘린더 기준은 항상 KOSPI
     days = _final_days(bench, now_kst)
-    d = signal_kst.strftime("%Y%m%d")
-    if d in bench and signal_kst.time() <= CUTOFF:
-        base_date = d
-        p0_date = max((x for x in days if x < d), default=None)
-    else:
-        nxt = [x for x in sorted(bench) if x > d]
-        base_date = nxt[0] if nxt else None
-        p0_date = max((x for x in days if x <= d), default=None)
+    base_date, p0_date = _base_dates(signal_kst, bench, days)
     res = {"base_date": base_date, "base": None, "pre": None, "beta": None, "status": "대기"}
     for h in HORIZONS:
         res[f"r{h}"] = res[f"b{h}"] = res[f"x{h}"] = res[f"s{h}"] = None

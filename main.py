@@ -19,7 +19,7 @@ import requests
 
 from classifier import classify, prompt_version, provider_tag, screen, validate
 from config import KST, load_config
-from measure import HORIZONS, iso_week, measure_one, parse_kst, summarize
+from measure import HORIZONS, iso_week, measure_one, measure_simple, parse_kst, summarize
 from news import collect
 
 ROOT = Path(__file__).parent
@@ -42,6 +42,7 @@ def _load_universe():
 UNIVERSE = _load_universe()
 CODE_SECTOR = {r["code"]: sec for sec, rows in UNIVERSE["sectors"].items() for r in rows}
 ABSOLUTE_SECTORS = {sec for sec in UNIVERSE["sectors"] if sec.startswith("ETF_")}
+BASKETS = json.loads((ROOT / "baskets.json").read_text(encoding="utf-8"))["baskets"]
 SEEN_KEEP_HOURS = 12
 SEEN_CHUNK = 40000  # 구글시트 셀 한도 50,000자 → 청크 분할 저장(12시간×150건 ≈ 1,800해시)
 
@@ -111,6 +112,41 @@ def is_session(t):
 
 
 # ───────────────────────── 수집·판단 ─────────────────────────
+class _Snap:
+    """신호 시점 가격 스냅샷(실행당 1회 조회·캐시). 실패해도 기록은 계속(빈 칸)."""
+    def __init__(self):
+        self.c = {}
+
+    def get(self, sym):
+        if sym not in self.c:
+            from prices import latest
+            try:
+                self.c[sym] = latest(sym)
+            except Exception as e:
+                print(f"[snap] {sym} 실패: {type(e).__name__}")
+                self.c[sym] = ("", "")
+        return self.c[sym]
+
+
+def _basket_rows(sid, ts, ev, pver, snap):
+    """사건 영향종목의 섹터별 고정 바구니(ETF+대표) → 신호시점 가격·KOSPI·S&P500 스냅샷 행."""
+    dirs = {}
+    for im in ev["impacts"]:
+        sec = CODE_SECTOR.get(im["code"])
+        if sec and sec not in ABSOLUTE_SECTORS and sec in BASKETS:
+            dirs.setdefault(sec, []).append(im["direction"])
+    rows = []
+    k_px, s_px = snap.get("KOSPI")[0], snap.get("SPX")[0]
+    for si, (sec, ds) in enumerate(dirs.items()):
+        net = sum(1 if d == "+" else -1 for d in ds)
+        d = "+" if net > 0 else "-" if net < 0 else ds[0]
+        for j, it in enumerate(BASKETS[sec]):
+            p, pd = snap.get(it["code"])
+            rows.append([f"{sid}-B{si}{j}", sid, ts, sec, it["role"], d, it["code"], it["name"], pver,
+                         p, pd, k_px, s_px] + [""] * 17 + ["대기", ts])
+    return rows
+
+
 def run_collect(cfg, sheet, mock_llm=None):
     t = now_kst()
     ts = t.strftime("%Y-%m-%d %H:%M")
@@ -148,6 +184,7 @@ def run_collect(cfg, sheet, mock_llm=None):
     if not headlines:
         providers = []
     sig_rows, meas_rows, alerts, dropped_all, primary_events = [], [], [], [], []
+    bask_rows, snap = [], _Snap()
     for pi, prov in enumerate(providers):
         pver = "mock" if mock_llm else prompt_version(cfg, UNIVERSE, prov)
         # 같은 모델 계열(태그)의 최근 사건 전체 — 버전이 바뀌어도(쿼리·유니버스 수정) 진행 중 사건을 '신규'로 재기록하지 않게.
@@ -179,9 +216,11 @@ def run_collect(cfg, sheet, mock_llm=None):
             for j, im in enumerate(ev["impacts"]):
                 meas_rows.append([f"{sid}-{j}", sid, ts, ev["category"], ev["summary"], im["direction"],
                                   im["confidence"], im["code"], im["name"], im["rationale"], pver]
-                                 + [""] * 16 + ["대기", ts])
+                                 + [""] * 16 + ["대기", ts]
+                                 + [snap.get(im["code"])[0], snap.get("KOSPI")[0], snap.get("SPX")[0]] + [""] * 6)
                 if pi == 0 and im["confidence"] >= cfg["ALERT_MIN_CONFIDENCE"]:
                     alerts.append(f"{im['direction']} {im['name']}({im['code']}) 확신{im['confidence']} — {im['rationale']}")
+            bask_rows += _basket_rows(sid, ts, ev, pver, snap)
 
     if sheet:
         # 원문 보관(별도 시트·월별 탭): 프롬프트를 바꿔도 같은 뉴스로 재채점(오프라인)할 수 있게
@@ -190,6 +229,7 @@ def run_collect(cfg, sheet, mock_llm=None):
                               for h in raw_headlines])
         sheet.append("신호로그", sig_rows)
         sheet.append("측정", meas_rows)
+        sheet.append("바구니", bask_rows)
         now_ts = datetime.now(timezone.utc).timestamp()
         for h in raw_headlines:
             seen[h["hash"]] = now_ts
@@ -205,6 +245,9 @@ def run_collect(cfg, sheet, mock_llm=None):
         print("── 측정(신규) ──")
         for r in meas_rows:
             print("  ", r[:11])
+        print(f"── 바구니 {len(bask_rows)}행 ──")
+        for r in bask_rows[:12]:
+            print("  ", r[:13])
         print("── 제외 ──", dropped_all)
 
     if alerts:
@@ -258,12 +301,37 @@ def run_measure(cfg, sheet):
         vals += [m["status"], ts]
         updates.append((i, MEAS_COL_START, vals))
         n_upd += 1
+        try:
+            ms = measure_simple(parse_kst(str(r["판단시각(KST)"])), code, t)
+            sv = [ms[f"{k}{h}"] if ms[f"{k}{h}"] is not None else "" for k in ("xk", "xs") for h in HORIZONS]
+            updates.append((i, "AG", sv))
+            r.update({f"단순초과K{h}d": ms[f"xk{h}"] for h in HORIZONS})
+        except Exception as e:
+            errs.append(f"{r['측정ID']}:단순:{e}")
         r.update({f"방향보정{h}d": m[f"s{h}"] for h in HORIZONS})
         r.update({f"초과{h}d%": m[f"x{h}"] for h in HORIZONS})
         r["판단→기준%"] = m["pre"]
         r["기준일"] = m["base_date"]
         done_rows.append(r)
     sheet.update_rows("측정", updates)
+
+    # 섹터 바구니: 단순 지수 대비 초과(종목%−KOSPI%, 종목%−S&P500%)
+    b_updates, b_rows = [], []
+    for i, r in enumerate(sheet.records("바구니"), start=2):
+        if r["상태"] != "완료":
+            try:
+                ms = measure_simple(parse_kst(str(r["판단시각(KST)"])), str(r["종목코드"]).zfill(6), t)
+            except Exception as e:
+                errs.append(f"{r['바구니ID']}:{e}")
+                continue
+            v = [ms["base_date"] or "", ms["base"] if ms["base"] is not None else ""]
+            for k in ("r", "k", "sp", "xk", "xs"):
+                v += [ms[f"{k}{h}"] if ms[f"{k}{h}"] is not None else "" for h in HORIZONS]
+            b_updates.append((i, "N", v + [ms["status"], ts]))
+            r.update({f"초과K{h}d": ms[f"xk{h}"] for h in HORIZONS})
+            r["기준일"] = ms["base_date"]
+        b_rows.append(r)
+    sheet.update_rows("바구니", b_updates)
 
     def _f(v):
         return float(v) if v not in ("", None) else None
@@ -294,6 +362,20 @@ def run_measure(cfg, sheet):
         if bl:
             bl["group"] = "기준선:반응방향추종(비교용)"
             lines.insert(1, bl)
+        # 참고 지표(판정 미사용): 단순 KOSPI 대비 초과 × 방향 — 영향종목 / 섹터 바구니
+        ref = []
+        simp = [{"signal_id": r["신호ID"], "category": "-", "confidence": "-", "week": iso_week(r.get("기준일", "")),
+                 **{f"s{h}": ((1 if r["방향"] == "+" else -1) * _f(r.get(f"단순초과K{h}d"))
+                              if _f(r.get(f"단순초과K{h}d")) is not None else None) for h in HORIZONS}} for r in rs]
+        if simp:
+            x = summarize(simp)[0]; x["group"] = "참고:영향종목 KOSPI단순초과"; ref.append(x)
+        bk = [{"signal_id": r["신호ID"], "category": "-", "confidence": "-", "week": iso_week(r.get("기준일", "")),
+               **{f"s{h}": ((1 if r["방향"] == "+" else -1) * _f(r.get(f"초과K{h}d"))
+                            if _f(r.get(f"초과K{h}d")) is not None else None) for h in HORIZONS}}
+              for r in b_rows if str(r.get("버전", "")) == ver]
+        if bk:
+            x = summarize(bk)[0]; x["group"] = "참고:섹터바구니 KOSPI단순초과"; ref.append(x)
+        lines[2 if bl else 1:1] = ref  # 전체·기준선 바로 아래
         for line in lines:
             out = [ver, line["group"]]
             for h in HORIZONS:

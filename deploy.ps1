@@ -20,10 +20,13 @@ foreach ($f in "signal.yml","keepalive.yml") { if (Test-Path $f) { Move-Item $f 
 
 # 2) git → 공개 저장소(이미 생성됨)
 if (-not (Test-Path .git)) { git init | Out-Null }
+# Claude가 GitHub에 직접 올린 커밋이 있으면 먼저 HEAD를 원격에 맞춤(작업 폴더 내용은 그대로 유지 → 이 폴더가 항상 기준)
+git fetch origin main 2>$null
+if ($LASTEXITCODE -eq 0) { git reset -q --mixed origin/main }
 git add -A
 $staged = git status --porcelain
 if ($staged -match "private/") { Fail "private/ 가 스테이징됨 — .gitignore 확인" }
-git commit -m "news-signal-engine init" | Out-Null
+git commit -m "deploy: update from local folder" | Out-Null
 git rev-parse --verify HEAD 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) { Fail "commit 실패 — git config --global user.name / user.email 설정 후 재실행" }
 git branch -M main
