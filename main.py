@@ -323,6 +323,44 @@ def _snapshot_returns(sheet, t):
     print(f"[snapshot] 수익률 {len(snap)}종목, 실패 {fails}")
 
 
+DART_VERSION = "dart-v1"
+
+
+def run_dart(cfg, sheet, t):
+    """당일 접수 DART 기업행동 공시 → 신호로그·측정 행(버전 dart-v1). 측정은 기존 run_measure가 수행. 하루 1회(18시)."""
+    import dart
+    ts = t.strftime("%Y-%m-%d %H:%M")
+    d = t.strftime("%Y%m%d")
+    try:
+        events = dart.fetch_events(cfg, d)
+    except Exception as e:
+        sheet.append("실행로그", [[ts, "dart", "", "", "", "", "", _redact(f"{e}", cfg)[:300], ""]])
+        return 0
+    seen = sheet.get_state("dart_seen", {}) or {}
+    cutoff = (t - timedelta(days=60)).strftime("%Y%m%d")
+    seen = {k: v for k, v in seen.items() if v >= cutoff}
+    snap = _Snap()
+    sig_rows, meas_rows = [], []
+    for i, ev in enumerate(events):
+        key = f"{ev['code']}_{ev['kind']}_{d[:6]}"  # 같은 종목·분류·월 1회(정정 공시 중복 방지 — 백테스트와 동일)
+        if key in seen:
+            continue
+        seen[key] = d
+        sid = f"D{t.strftime('%y%m%d')}-{ev['kind'][:4].lower()}{i}"
+        link = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={ev['rcept_no']}"
+        sig_rows.append([sid, ts, f"DART_{ev['kind']}_{ev['code']}_{d}", "기업_공시", f"{ev['corp']} {ev['report']}", 3, 20,
+                         "장외", ev["report"], link, "dart", DART_VERSION])
+        meas_rows.append([f"{sid}-0", sid, ts, "기업_공시", f"{ev['corp']} {ev['report']}", ev["direction"], 3,
+                          ev["code"], ev["corp"], ev["kind"], DART_VERSION] + [""] * 16 + ["대기", ts]
+                         + [snap.get(ev["code"])[0], snap.get("KOSPI")[0], snap.get("SPX")[0]] + [""] * 6)
+    sheet.append("신호로그", sig_rows)
+    sheet.append("측정", meas_rows)
+    sheet.set_state("dart_seen", seen)
+    sheet.append("실행로그", [[ts, "dart", f"공시 {len(events)}", len(sig_rows), len(meas_rows), "", "", "", ""]])
+    print(f"[dart] 공시 {len(events)}건 → 신규 신호 {len(sig_rows)}")
+    return len(sig_rows)
+
+
 def run_measure(cfg, sheet):
     t = now_kst()
     ts = t.strftime("%Y-%m-%d %H:%M")
@@ -464,6 +502,8 @@ def main():
         if a.mode in ("auto", "collect"):
             run_collect(cfg, sheet, a.mock_llm)
         if sheet and (a.mode == "measure" or (a.mode == "auto" and t.hour == cfg["MEASURE_HOUR_KST"])):
+            if cfg.get("DART_API_KEY"):
+                run_dart(cfg, sheet, t)  # 측정 전에 기록 → 오늘 신호는 다음 거래일 종가부터 측정
             run_measure(cfg, sheet)
     except Exception as e:
         print(_redact(traceback.format_exc(), cfg))

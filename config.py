@@ -23,6 +23,7 @@ _DEFAULTS = {
     "TELEGRAM_BOT_TOKEN": "",       # 선택: 알림
     "TELEGRAM_CHAT_ID": "",
     "PRIVATE_PROMPT": "",           # 판단 원칙 전문 — 별도 Secret 권장(저장소 비공개 유지)
+    "DART_API_KEY": "",             # 선택: DART 주요사항보고서(자사주·증자·CB) 이벤트 신호(H9 표본 외 추적). 비우면 비활성
     "NEWS_LOOKBACK_HOURS": 2,       # 매시간 실행 + 2시간 창 (누락 방지, 중복은 해시로 제거)
     "MAX_HEADLINES": 150,   # LLM 1회 입력 상한(라운드로빈 선별, 미선별분은 다음 시간에 재기회)
     "MIN_MATERIALITY": 3,           # 1~5, 이 미만 사건은 기록 안 함
