@@ -29,7 +29,5 @@ jobs:
           CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
           PRIVATE_PROMPT: ${{ secrets.PRIVATE_PROMPT }}
           PRIVATE_UNIVERSE: ${{ secrets.PRIVATE_UNIVERSE }}
-          # 환경변수는 CONFIG_JSON보다 우선(config.py). 2026-10-21 Sonnet 그림자 제거(비용 월 $100→$67). 복원하려면 이 줄 삭제.
-          LLM_PROVIDERS: "anthropic:claude-opus-5-5"
           TZ: Asia/Seoul
         run: python main.py ${{ github.event.inputs.mode || 'auto' }}
