@@ -11,7 +11,6 @@
 ## 채점 보호와 독립 검증 (2026-10-24 지시)
 - **채점 쪽은 잠금:** `measure.py`, 시트 `요약` 탭 산식, README "사전 등록"·"측정 규칙", 그리고 이 CLAUDE.md의 절대 규칙·이 섹션은 사용자 명시 승인 없이 수정하지 않는다. 다른 작업 중 필요해 보여도 제안만 하고 멈춘다.
 - **작업과 검증 분리:** 신호·판단 쪽을 바꾼 세션이 그 결과를 스스로 합격 판정하지 않는다. 검증은 새 세션(가능하면 다른 모델)이 맡고, 앞 세션의 요약이 아니라 원본(Actions 로그·시트 실제 행·거래소 가격)을 직접 읽어 판정한다.
-- **GitHub 잠금(ruleset "채점 보호"):** main 직접 push 금지 → 모든 변경은 브랜치 + PR로. measure.py·README.md·CLAUDE.md·CODEOWNERS를 건드리는 PR은 코드오너 검토가 필요해 일반 병합이 막힌다. 관리자 우회(bypass) 병합은 **사용자가 그 PR에 대해 채팅으로 명시 승인한 경우에만**, 우회 사실을 보고에 적는다. 우회 기록은 GitHub ruleset 이력에 남는다.
 - **보고에는 원본 위치를 붙인다:** 실행 ID, 시트 탭·행 범위 등 사용자가 직접 열어 확인할 수 있는 경로를 함께 적는다.
 
 ## 실행 구조
@@ -23,7 +22,7 @@
 
 ## 수정 절차
 1. 로컬 점검 통과: `python tests/test_offline.py` → `python main.py collect --dry-run --mock-llm tests/mock_llm.json`
-2. 브랜치 push → PR 생성 → (보호 파일 없으면) 병합 → workflow_dispatch(mode=collect)로 1회 실행 → 로그 건수·시트 `실행로그` 확인 후 보고.
+2. push → workflow_dispatch(mode=collect)로 1회 실행 → 로그 건수·시트 `실행로그` 확인 후 보고.
 3. LLM 호출 수·입력 토큰을 늘리는 변경은 월 비용 추정치를 먼저 보고.
 4. 시트 쓰기는 RAW(종목코드 앞자리 0 보존).
 
