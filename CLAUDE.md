@@ -1,0 +1,26 @@
+# news-signal-engine — Claude 작업 규칙
+
+뉴스 신호 검증 엔진 1단계(매매 연결 없음). 상세 설계·측정 규칙·사전 등록은 **README.md가 원본** — 여기엔 작업할 때 지킬 규칙만 둔다.
+
+## 절대 규칙
+- **공개 저장소다.** 키·토큰·시트ID·판단 원칙(prompt)·유니버스·LLM 출력 원문을 코드·커밋·로그·오류 메시지에 남기지 않는다. 공개 로그엔 건수만.
+- **실제 매매 로직·증권사 키는 이 저장소에 넣지 않는다.** 검증 기간(2027-01-15 판정)에는 어떤 신호도 주문과 연결하지 않는다.
+- **사전 등록 기준(README "사전 등록")을 결과를 보고 바꾸지 않는다.** 탐색용 그룹에서 좋은 것만 골라 결론 내는 것 금지.
+- **버전 = 판단원칙 + 유니버스 + 모델ID + temperature (+선별 모델) 해시.** 하나라도 바꾸면 새 실험 → 바꾸기 전에 "새 버전이 된다"를 먼저 보고하고 승인받는다. 모델ID는 날짜 고정 스냅샷으로.
+
+## 실행 구조
+- `signal.yml`: cron-job.org가 매시 7분(KST) workflow_dispatch 호출, mode=auto(18시 실행분에서 측정·일일요약). GitHub schedule은 지연돼서 안 씀. timeout 15분.
+- `keepalive.yml`: 공개 저장소 60일 비활동 시 워크플로 비활성화 방지(주 1회).
+- 공개 저장소라 Actions 분 한도 영향 없음 — 비용 병목은 **LLM API 예산(월 $100, Claude Max 크레딧)**. 매 실행 토큰·추정비용이 시트 `실행로그`와 `_state.usage_YYYY-MM`에 누적, 18시 요약에 월말 추정 표시.
+- Secrets: `CONFIG_JSON`(키·시트ID·모델 설정, 형식은 config.example.json), `PRIVATE_PROMPT`, `PRIVATE_UNIVERSE`. 로컬 비공개 파일은 `private/`(gitignore).
+- 파일 역할표는 README "구조" 참고. DART 공시 신호는 `dart-v1` 스트림(표본 외 추적).
+
+## 수정 절차
+1. 로컬 점검 통과: `python tests/test_offline.py` → `python main.py collect --dry-run --mock-llm tests/mock_llm.json`
+2. push → workflow_dispatch(mode=collect)로 1회 실행 → 로그 건수·시트 `실행로그` 확인 후 보고.
+3. LLM 호출 수·입력 토큰을 늘리는 변경은 월 비용 추정치를 먼저 보고.
+4. 시트 쓰기는 RAW(종목코드 앞자리 0 보존).
+
+## 관련 위치 (이 저장소 밖)
+- 백테스트(유사사건·수급·팩터·이벤트): PC `Downloads\QUANT\*_backtest` — 이 엔진과 결합은 검증 통과 시에만.
+- 레거시 자동매매 코드: `quant-bot` 저장소(보관용).
